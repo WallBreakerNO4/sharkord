@@ -485,3 +485,25 @@ triage 使用汉化后的五个默认标签。见 `docs/agents/triage-labels.md`
 ### Domain docs
 
 单一上下文：根目录 GLOSSARY.md + docs/adr/。见 `docs/agents/domain.md`。
+
+## Git 工作流
+
+### 分支模型
+
+- `development`：上游镜像，只通过 `git merge --ff-only upstream/development` 更新，无本地提交。
+- `personal`：私人开发主线，一切不进上游的改动落在这里；部署镜像由此构建：`gh workflow run develop-image.yml --ref personal`。
+- `feat/<issue>-<slug>`：上游贡献分支，基于同步后的 `development` 拉，用完即删；PR 合并后随下次同步回流 `personal`。
+
+### 同步上游
+
+```bash
+git fetch upstream
+git checkout development && git merge --ff-only upstream/development && git push origin development
+git checkout personal && git merge development
+```
+
+`--ff-only` 被拒绝说明 development 偏离了镜像：停下，先排查偏离来源。
+
+### 提 PR 给上游
+
+流程见 `docs/agents/upstream-pr.md`；权威规则在仓库根 CONTRIBUTING.md。
