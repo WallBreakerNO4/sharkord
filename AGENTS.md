@@ -492,7 +492,7 @@ triage 使用汉化后的五个默认标签。见 `docs/agents/triage-labels.md`
 
 - `development`：上游镜像，只通过 `git merge --ff-only upstream/development` 更新，无本地提交。
 - `personal`：私人开发主线，一切不进上游的改动落在这里；部署镜像由此构建：`gh workflow run develop-image.yml --ref personal`。
-- `feat/<issue>-<slug>`：上游贡献分支，基于同步后的 `development` 拉，用完即删；PR 合并后随下次同步回流 `personal`。
+- `feat/<issue>-<slug>`：上游贡献分支，基于同步后的 `development` 拉，提交只含本功能文件，用完即删；PR 合并后随下次同步回流 `personal`。
 
 ### 同步上游
 

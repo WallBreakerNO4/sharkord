@@ -6,7 +6,7 @@
 
 1. **开 issue**：`gh issue create -R Sharkord/sharkord ...`。上游规则：无关联 issue 的 PR 直接关闭。正文说清问题或动机、复现步骤（如适用）、为何在项目范围内，等维护者讨论通过再动手。CONTRIBUTING 标记过 Not Planned 的方向不再提。
 2. **拉 feat 分支**：先按 AGENTS.md「Git 工作流」同步 `development`，再 `git checkout -b feat/<issue>-<slug> development`。基于干净的 development，PR 的 diff 才只含本功能的提交，`personal` 上的私人改动不会混进去。
-3. **开发**：遵循本仓库 AGENTS.md 的代码与测试规范。收尾标准：`bun run magic` 与 `bun run test` 全绿（上游 CI 强制，新行为必须带测试）。
+3. **开发**：遵循本仓库 AGENTS.md 的代码与测试规范。每个提交前 `git diff development --stat`，出现的只有功能文件；混入了工作流文件时 `git checkout development -- <path>` 恢复上游版本后重新提交。收尾标准：`bun run magic` 与 `bun run test` 全绿（上游 CI 强制，新行为必须带测试）。
 4. **推送与建 PR**：
 
    ```bash
