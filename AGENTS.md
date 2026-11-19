@@ -471,3 +471,17 @@ bump.
   promise nobody awaits) as deliberate instead of leaving it visible. If the promise genuinely
   cannot be awaited, either handle its failure with a `.catch()` or say why in a comment.
 - Do NOT comment on everything. Comments are for context and explain possible edge cases, not for restating what the code does.
+
+## Agent skills
+
+### Issue tracker
+
+issue 记录在 GitHub Issues（WallBreakerNO4/sharkord），全部通过 gh CLI 读写。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+triage 使用汉化后的五个默认标签。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单一上下文：根目录 GLOSSARY.md + docs/adr/。见 `docs/agents/domain.md`。
