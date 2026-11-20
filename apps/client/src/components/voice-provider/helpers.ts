@@ -254,6 +254,41 @@ const getSimulcastCodec = (
     (c) => c.mimeType.toLowerCase() === VideoCodec.VP8.toLowerCase()
   );
 
+// chrome's media foundation hardware encoders reject the constrained baseline
+// h264 profile (42e01f), which the router lists first among h264 codecs, so a
+// plain find would always hand windows users to the openh264 software encoder.
+// high and main profiles encode in hardware, so prefer them when present.
+const H264_HARDWARE_PROFILE_LEVEL_IDS = ['640032', '4d0032'];
+
+const getPreferredScreenCodec = (
+  rtpCapabilities: RtpCapabilities | null,
+  codec: VideoCodec
+): RtpCodecCapability | undefined => {
+  const codecs = rtpCapabilities?.codecs?.filter(
+    (c) => c.mimeType.toLowerCase() === codec.toLowerCase()
+  );
+
+  if (!codecs?.length) {
+    return undefined;
+  }
+
+  if (codec !== VideoCodec.H264) {
+    return codecs[0];
+  }
+
+  for (const profileLevelId of H264_HARDWARE_PROFILE_LEVEL_IDS) {
+    const match = codecs.find(
+      (c) => c.parameters?.['profile-level-id'] === profileLevelId
+    );
+
+    if (match) {
+      return match;
+    }
+  }
+
+  return codecs[0];
+};
+
 const getExternalVolumeKey = (pluginId: string, key: string) =>
   `external-${pluginId}-${key}`;
 
@@ -307,6 +342,7 @@ export {
   getExternalVolumeKey,
   getInitialStreamPaused,
   getOwnedExternalVolumeKeys,
+  getPreferredScreenCodec,
   getRemoteConsumerTypeKey,
   getScreenShareSimulcastEncodings,
   getSimulcastCodec,

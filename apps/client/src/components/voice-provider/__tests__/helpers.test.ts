@@ -1,8 +1,14 @@
+import { VideoCodec } from '@/types';
 import type { TExternalStreamsMap } from '@sharkord/shared';
 import { StreamKind } from '@sharkord/shared';
 import { describe, expect, test } from 'bun:test';
+import type {
+  RtpCapabilities,
+  RtpCodecCapability
+} from 'mediasoup-client/types';
 import {
   getOwnedExternalVolumeKeys,
+  getPreferredScreenCodec,
   getUserScreenVolumeKey,
   isOwnProducerEvent,
   resolveVolume
@@ -94,5 +100,87 @@ describe('screen share audio default volume', () => {
     expect(resolveVolume({ [screenKey]: 60 }, screenKey, new Set(), true)).toBe(
       60
     );
+  });
+});
+
+describe('getPreferredScreenCodec', () => {
+  let payloadType = 96;
+
+  const codec = (
+    mimeType: string,
+    profileLevelId?: string
+  ): RtpCodecCapability => {
+    payloadType += 1;
+
+    return {
+      kind: 'video',
+      mimeType,
+      preferredPayloadType: payloadType,
+      clockRate: 90000,
+      parameters: profileLevelId
+        ? { 'profile-level-id': profileLevelId }
+        : undefined
+    };
+  };
+
+  const capabilitiesWith = (codecs: RtpCodecCapability[]): RtpCapabilities => ({
+    codecs
+  });
+
+  // the router offers constrained baseline (42e01f) before the other h264
+  // profiles, but chrome's media foundation hardware encoders reject it and
+  // fall back to the openh264 software encoder, so the lookup must not just
+  // take the first h264 match
+  test('should pick high over main and constrained baseline', () => {
+    const preferred = getPreferredScreenCodec(
+      capabilitiesWith([
+        codec('video/H264', '42e01f'),
+        codec('video/H264', '640032'),
+        codec('video/H264', '4d0032')
+      ]),
+      VideoCodec.H264
+    );
+
+    expect(preferred?.parameters?.['profile-level-id']).toBe('640032');
+  });
+
+  test('should pick main when high is not offered', () => {
+    const preferred = getPreferredScreenCodec(
+      capabilitiesWith([
+        codec('video/H264', '42e01f'),
+        codec('video/H264', '4d0032')
+      ]),
+      VideoCodec.H264
+    );
+
+    expect(preferred?.parameters?.['profile-level-id']).toBe('4d0032');
+  });
+
+  test('should settle for constrained baseline when nothing else is offered', () => {
+    const preferred = getPreferredScreenCodec(
+      capabilitiesWith([codec('video/H264', '42e01f')]),
+      VideoCodec.H264
+    );
+
+    expect(preferred?.parameters?.['profile-level-id']).toBe('42e01f');
+  });
+
+  test('should keep the first match for codecs without profiles', () => {
+    const preferred = getPreferredScreenCodec(
+      capabilitiesWith([codec('video/VP9'), codec('video/VP8')]),
+      VideoCodec.VP8
+    );
+
+    expect(preferred?.mimeType).toBe('video/VP8');
+  });
+
+  test('should return nothing without capabilities or a matching codec', () => {
+    expect(getPreferredScreenCodec(null, VideoCodec.H264)).toBeUndefined();
+    expect(
+      getPreferredScreenCodec(
+        capabilitiesWith([codec('video/VP9')]),
+        VideoCodec.H264
+      )
+    ).toBeUndefined();
   });
 });

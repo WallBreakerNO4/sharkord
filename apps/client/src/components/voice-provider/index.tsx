@@ -63,6 +63,7 @@ import {
 } from './controls-bridge';
 import { FloatingPinnedCard } from './floating-pinned-card';
 import {
+  getPreferredScreenCodec,
   getRemoteConsumerTypeKey,
   getScreenShareSimulcastEncodings,
   getSimulcastCodec,
@@ -1092,18 +1093,17 @@ const VoiceProvider = memo(({ children }: TVoiceProviderProps) => {
           if (
             !simulcastEnabled &&
             screenSettings.screenCodec &&
-            screenSettings.screenCodec !== VideoCodec.AUTO &&
-            routerRtpCapabilities.current?.codecs
+            screenSettings.screenCodec !== VideoCodec.AUTO
           ) {
-            preferredCodec = routerRtpCapabilities.current.codecs.find(
-              (c) =>
-                c.mimeType.toLowerCase() ===
-                screenSettings.screenCodec.toLowerCase()
+            preferredCodec = getPreferredScreenCodec(
+              routerRtpCapabilities.current,
+              screenSettings.screenCodec
             );
 
             if (preferredCodec) {
               voiceLogger.info('screen: using preferred codec', {
-                codec: preferredCodec.mimeType
+                codec: preferredCodec.mimeType,
+                profileLevelId: preferredCodec.parameters?.['profile-level-id']
               });
             }
           }
