@@ -80,198 +80,217 @@ const useTransports = ({
   const consumerCodecs = useRef<Map<string, string>>(new Map());
   const consumeOperationsInProgress = useRef<Set<string>>(new Set());
 
-  const createProducerTransport = useCallback(async (device: Device) => {
-    voiceLogger.info('producer transport: creating');
+  const createProducerTransport = useCallback(
+    async (device: Device, ingressId?: string) => {
+      voiceLogger.info('producer transport: creating', { ingressId });
 
-    const trpc = getTRPCClient();
+      const trpc = getTRPCClient();
 
-    try {
-      const params = await trpc.voice.createProducerTransport.mutate();
+      try {
+        // no argument at all keeps a direct connection identical to what a
+        // server without ingresses has always received
+        const params = await trpc.voice.createProducerTransport.mutate(
+          ingressId ? { ingressId } : undefined
+        );
 
-      voiceLogger.info('producer transport: created', {
-        transportId: params.id,
-        iceCandidates: params.iceCandidates.length
-      });
-
-      producerTransport.current = device.createSendTransport(params);
-
-      producerTransport.current.on(
-        'connect',
-        async ({ dtlsParameters }, callback, errback) => {
-          voiceLogger.info('producer transport: dtls connect requested', {
-            role: dtlsParameters.role
-          });
-
-          try {
-            await trpc.voice.connectProducerTransport.mutate({
-              dtlsParameters
-            });
-
-            callback();
-          } catch (error) {
-            errback(error as Error);
-            voiceLogger.error('producer transport: dtls connect failed', error);
-          }
-        }
-      );
-
-      producerTransport.current.on('connectionstatechange', (state) => {
-        voiceLogger.info('producer transport: connection state changed', {
-          state
+        voiceLogger.info('producer transport: created', {
+          transportId: params.id,
+          iceCandidates: params.iceCandidates.length
         });
 
-        if (state === 'failed') {
-          voiceLogger.error(
-            'producer transport: ice failed, closing',
-            new Error(`connection state ${state}`)
-          );
-          producerTransport.current?.close();
-        } else if (state === 'closed') {
-          voiceLogger.info('producer transport: closed');
-          producerTransport.current = undefined;
-        }
-      });
+        producerTransport.current = device.createSendTransport(params);
 
-      producerTransport.current.on('icecandidateerror', (error) => {
-        voiceLogger.warn('producer transport: ice candidate error', {
-          address: error.address,
-          port: error.port,
-          errorCode: error.errorCode,
-          errorText: error.errorText
-        });
-      });
-
-      producerTransport.current.on(
-        'produce',
-        async ({ rtpParameters, appData }, callback, errback) => {
-          voiceLogger.info('producer transport: producing track', {
-            kind: (appData as { kind: StreamKind }).kind,
-            codec: rtpParameters.codecs[0]?.mimeType,
-            encodings: rtpParameters.encodings?.length ?? 0
-          });
-
-          const { kind, qualityLayers } = appData as {
-            kind: TProducibleStreamKind;
-            qualityLayers?: TStreamQualityLayer[];
-          };
-
-          if (!producerTransport.current) return;
-
-          try {
-            const producerId = await trpc.voice.produce.mutate({
-              transportId: producerTransport.current.id,
-              kind,
-              rtpParameters,
-              qualityLayers
+        producerTransport.current.on(
+          'connect',
+          async ({ dtlsParameters }, callback, errback) => {
+            voiceLogger.info('producer transport: dtls connect requested', {
+              role: dtlsParameters.role
             });
 
-            voiceLogger.info('producer transport: track produced', {
-              kind,
-              producerId
-            });
+            try {
+              await trpc.voice.connectProducerTransport.mutate({
+                dtlsParameters
+              });
 
-            callback({ id: producerId });
-          } catch (error) {
-            if (error instanceof TRPCClientError) {
-              if (error.data.code === 'FORBIDDEN') {
-                voiceLogger.warn('producer transport: produce denied', {
-                  kind
-                });
-                errback(
-                  new Error(
-                    `You don't have permission to ${kind} in this channel`
-                  )
-                );
-
-                return;
-              }
+              callback();
+            } catch (error) {
+              errback(error as Error);
+              voiceLogger.error(
+                'producer transport: dtls connect failed',
+                error
+              );
             }
-
-            voiceLogger.error('producer transport: produce failed', error, {
-              kind
-            });
-            errback(error as Error);
           }
-        }
-      );
-    } catch (error) {
-      voiceLogger.error('producer transport: create failed', error);
-    }
-  }, []);
+        );
 
-  const createConsumerTransport = useCallback(async (device: Device) => {
-    voiceLogger.info('consumer transport: creating');
-
-    const trpc = getTRPCClient();
-
-    try {
-      const params = await trpc.voice.createConsumerTransport.mutate();
-
-      voiceLogger.info('consumer transport: created', {
-        transportId: params.id,
-        iceCandidates: params.iceCandidates.length
-      });
-
-      consumerTransport.current = device.createRecvTransport(params);
-
-      consumerTransport.current.on(
-        'connect',
-        async ({ dtlsParameters }, callback, errback) => {
-          voiceLogger.info('consumer transport: dtls connect requested', {
-            role: dtlsParameters.role
+        producerTransport.current.on('connectionstatechange', (state) => {
+          voiceLogger.info('producer transport: connection state changed', {
+            state
           });
 
-          try {
-            await trpc.voice.connectConsumerTransport.mutate({
-              dtlsParameters
-            });
-
-            callback();
-          } catch (error) {
-            errback(error as Error);
-            voiceLogger.error('consumer transport: dtls connect failed', error);
+          if (state === 'failed') {
+            voiceLogger.error(
+              'producer transport: ice failed, closing',
+              new Error(`connection state ${state}`)
+            );
+            producerTransport.current?.close();
+          } else if (state === 'closed') {
+            voiceLogger.info('producer transport: closed');
+            producerTransport.current = undefined;
           }
-        }
-      );
-
-      consumerTransport.current.on('connectionstatechange', (state) => {
-        voiceLogger.info('consumer transport: connection state changed', {
-          state
         });
 
-        if (state === 'failed') {
-          voiceLogger.error(
-            'consumer transport: ice failed, closing',
-            new Error(`connection state ${state}`)
-          );
-
-          Object.values(consumers.current).forEach((userConsumers) => {
-            Object.values(userConsumers).forEach((consumer) => {
-              consumer.close();
-            });
+        producerTransport.current.on('icecandidateerror', (error) => {
+          voiceLogger.warn('producer transport: ice candidate error', {
+            address: error.address,
+            port: error.port,
+            errorCode: error.errorCode,
+            errorText: error.errorText
           });
-          consumers.current = {};
-
-          consumerTransport.current?.close();
-          consumerTransport.current = undefined;
-        } else if (state === 'closed') {
-          voiceLogger.info('consumer transport: closed');
-          consumerTransport.current = undefined;
-        }
-      });
-
-      consumerTransport.current.on('icecandidateerror', (error) => {
-        voiceLogger.warn('consumer transport: ice candidate error', {
-          address: error.address,
-          port: error.port,
-          errorCode: error.errorCode,
-          errorText: error.errorText
         });
-      });
-    } catch (error) {
-      voiceLogger.error('consumer transport: create failed', error);
-    }
-  }, []);
+
+        producerTransport.current.on(
+          'produce',
+          async ({ rtpParameters, appData }, callback, errback) => {
+            voiceLogger.info('producer transport: producing track', {
+              kind: (appData as { kind: StreamKind }).kind,
+              codec: rtpParameters.codecs[0]?.mimeType,
+              encodings: rtpParameters.encodings?.length ?? 0
+            });
+
+            const { kind, qualityLayers } = appData as {
+              kind: TProducibleStreamKind;
+              qualityLayers?: TStreamQualityLayer[];
+            };
+
+            if (!producerTransport.current) return;
+
+            try {
+              const producerId = await trpc.voice.produce.mutate({
+                transportId: producerTransport.current.id,
+                kind,
+                rtpParameters,
+                qualityLayers
+              });
+
+              voiceLogger.info('producer transport: track produced', {
+                kind,
+                producerId
+              });
+
+              callback({ id: producerId });
+            } catch (error) {
+              if (error instanceof TRPCClientError) {
+                if (error.data.code === 'FORBIDDEN') {
+                  voiceLogger.warn('producer transport: produce denied', {
+                    kind
+                  });
+                  errback(
+                    new Error(
+                      `You don't have permission to ${kind} in this channel`
+                    )
+                  );
+
+                  return;
+                }
+              }
+
+              voiceLogger.error('producer transport: produce failed', error, {
+                kind
+              });
+              errback(error as Error);
+            }
+          }
+        );
+      } catch (error) {
+        voiceLogger.error('producer transport: create failed', error);
+      }
+    },
+    []
+  );
+
+  const createConsumerTransport = useCallback(
+    async (device: Device, ingressId?: string) => {
+      voiceLogger.info('consumer transport: creating', { ingressId });
+
+      const trpc = getTRPCClient();
+
+      try {
+        // both transports ride the route resolved once for the session
+        const params = await trpc.voice.createConsumerTransport.mutate(
+          ingressId ? { ingressId } : undefined
+        );
+
+        voiceLogger.info('consumer transport: created', {
+          transportId: params.id,
+          iceCandidates: params.iceCandidates.length
+        });
+
+        consumerTransport.current = device.createRecvTransport(params);
+
+        consumerTransport.current.on(
+          'connect',
+          async ({ dtlsParameters }, callback, errback) => {
+            voiceLogger.info('consumer transport: dtls connect requested', {
+              role: dtlsParameters.role
+            });
+
+            try {
+              await trpc.voice.connectConsumerTransport.mutate({
+                dtlsParameters
+              });
+
+              callback();
+            } catch (error) {
+              errback(error as Error);
+              voiceLogger.error(
+                'consumer transport: dtls connect failed',
+                error
+              );
+            }
+          }
+        );
+
+        consumerTransport.current.on('connectionstatechange', (state) => {
+          voiceLogger.info('consumer transport: connection state changed', {
+            state
+          });
+
+          if (state === 'failed') {
+            voiceLogger.error(
+              'consumer transport: ice failed, closing',
+              new Error(`connection state ${state}`)
+            );
+
+            Object.values(consumers.current).forEach((userConsumers) => {
+              Object.values(userConsumers).forEach((consumer) => {
+                consumer.close();
+              });
+            });
+            consumers.current = {};
+
+            consumerTransport.current?.close();
+            consumerTransport.current = undefined;
+          } else if (state === 'closed') {
+            voiceLogger.info('consumer transport: closed');
+            consumerTransport.current = undefined;
+          }
+        });
+
+        consumerTransport.current.on('icecandidateerror', (error) => {
+          voiceLogger.warn('consumer transport: ice candidate error', {
+            address: error.address,
+            port: error.port,
+            errorCode: error.errorCode,
+            errorText: error.errorText
+          });
+        });
+      } catch (error) {
+        voiceLogger.error('consumer transport: create failed', error);
+      }
+    },
+    []
+  );
 
   const consume = useCallback(
     async (

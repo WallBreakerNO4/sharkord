@@ -33,7 +33,8 @@ import {
   selectedThreadSelector,
   threadSidebarDataSelector,
   voiceChatFollowsVoiceSelector,
-  voiceChatSidebarDataSelector
+  voiceChatSidebarDataSelector,
+  voiceIngressIdSelector
 } from './selectors';
 
 export const useIsAppLoading = () => useSelector(appLoadingSelector);
@@ -108,6 +109,8 @@ export const useNotifyPlugins = () => useSelector(notifyPluginsSelector);
 
 export const useVoiceChatSidebar = () =>
   useSelector(voiceChatSidebarDataSelector);
+
+export const useVoiceIngressId = () => useSelector(voiceIngressIdSelector);
 
 export const usePluginSlotDebug = () => useSelector(pluginSlotDebugSelector);
 

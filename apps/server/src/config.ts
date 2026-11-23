@@ -11,6 +11,10 @@ import {
   resolveInternalAnnouncedAddress
 } from './helpers/network';
 import { CONFIG_INI_PATH } from './helpers/paths';
+import {
+  resolveVoiceIngresses,
+  setResolvedVoiceIngresses
+} from './helpers/voice-ingresses';
 import { deepMerge } from './utils/deep-merge';
 import { IS_DEVELOPMENT, IS_TEST } from './utils/env';
 
@@ -22,6 +26,44 @@ const deepFreeze = <T>(value: T): T => {
 
   return value;
 };
+
+// ini gives every value as a string, so an unset port or addressV6 arrives as "" and is
+// normalized to undefined here. config.ini is rewritten on every boot, and ini writes a
+// present undefined as the literal "undefined", which no longer parses: unset optionals
+// are dropped from the object instead of staying in it as undefined
+const zVoiceIngress = z
+  .object({
+    name: z.string().trim().min(1).max(64),
+    address: z.string().trim().min(1),
+    addressV6: z.preprocess(
+      (value) =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.string().trim().optional()
+    ),
+    port: z.preprocess(
+      (value) =>
+        value === '' || value === undefined || value === null
+          ? undefined
+          : value,
+      z.coerce.number().int().min(1).max(65535).optional()
+    )
+  })
+  .transform((ingress) => {
+    const next: {
+      name: string;
+      address: string;
+      addressV6?: string;
+      port?: number;
+    } = {
+      name: ingress.name,
+      address: ingress.address
+    };
+
+    if (ingress.addressV6 !== undefined) next.addressV6 = ingress.addressV6;
+    if (ingress.port !== undefined) next.port = ingress.port;
+
+    return next;
+  });
 
 const zConfig = z.object({
   server: z.object({
@@ -68,7 +110,16 @@ const zConfig = z.object({
     announcedAddress: z.string(),
     announcedAddressV6: z.string(),
     internalAnnouncedAddress: z.string(),
-    maxBitrate: z.coerce.number().int().positive()
+    maxBitrate: z.coerce.number().int().positive(),
+    ingresses: z
+      .record(
+        z
+          .string()
+          .trim()
+          .regex(/^[a-zA-Z0-9_-]{1,64}$/),
+        zVoiceIngress
+      )
+      .default({})
   })
 });
 
@@ -106,7 +157,8 @@ const defaultConfig: TConfig = {
     announcedAddress: '',
     announcedAddressV6: '',
     internalAnnouncedAddress: '',
-    maxBitrate: 30_000_000 // 30 Mbps
+    maxBitrate: 30_000_000, // 30 Mbps
+    ingresses: {}
   }
 };
 
@@ -165,6 +217,7 @@ const envOverridesMap: Record<string, string> = {
   'webRtc.internalAnnouncedAddress':
     'SHARKORD_WEBRTC_INTERNAL_ANNOUNCED_ADDRESS',
   'webRtc.maxBitrate': 'SHARKORD_WEBRTC_MAX_BITRATE',
+  'webRtc.ingresses': 'SHARKORD_WEBRTC_INGRESSES',
   'server.rateLimitersEnabled': 'SHARKORD_RATE_LIMITERS_ENABLED'
 };
 
@@ -190,6 +243,12 @@ const SERVER_PUBLIC_IPV6 = await resolveAnnouncedAddressV6(
 // lan clients cannot reach the public ip (no nat loopback, split dns)
 const SERVER_INTERNAL_ANNOUNCED_IP = await resolveInternalAnnouncedAddress(
   config.webRtc.internalAnnouncedAddress
+);
+
+// edge ingresses resolve at boot like the announced addresses: one that does not
+// resolve is skipped with a warning instead of taking the server down
+setResolvedVoiceIngresses(
+  await resolveVoiceIngresses(config.webRtc.ingresses, config.webRtc.port)
 );
 
 export {

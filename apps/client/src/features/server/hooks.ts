@@ -38,6 +38,7 @@ import {
   typingUsersByConversationKeySelector,
   userRolesSelector,
   userSettingsPluginsSelector,
+  voiceIngressesSelector,
   voiceUsersByChannelIdSelector,
   webRtcSimulcastEnabledSelector
 } from './selectors';
@@ -67,6 +68,8 @@ export const usePublicServerSettings = () =>
 
 export const useWebRtcSimulcastEnabled = () =>
   useSelector(webRtcSimulcastEnabledSelector);
+
+export const useVoiceIngresses = () => useSelector(voiceIngressesSelector);
 
 export const useOwnUserRoles = () => useSelector(ownUserRolesSelector);
 

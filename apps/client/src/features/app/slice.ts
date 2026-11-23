@@ -47,6 +47,7 @@ export interface TAppState {
   messageJumpTarget: TMessageJumpToTarget | undefined;
   voiceChatSidebarOpen: boolean;
   voiceChatChannelId: number | undefined;
+  voiceIngressId: string | undefined;
   pluginSlotDebug: boolean;
   modifierKeysHeldMap: Record<string, boolean>;
 }
@@ -141,6 +142,8 @@ const initialState: TAppState = {
   voiceChatChannelId: getLocalStorageItemAsNumber(
     LocalStorageKey.VOICE_CHAT_SIDEBAR_CHANNEL_ID
   ),
+  voiceIngressId:
+    getLocalStorageItem(LocalStorageKey.VOICE_INGRESS_ID) || undefined,
   pluginSlotDebug: getLocalStorageItemBool(
     LocalStorageKey.PLUGIN_SLOT_DEBUG,
     false
@@ -267,6 +270,9 @@ export const appSlice = createSlice({
     ) => {
       state.voiceChatSidebarOpen = action.payload.open;
       state.voiceChatChannelId = action.payload.channelId;
+    },
+    setVoiceIngressId: (state, action: PayloadAction<string | undefined>) => {
+      state.voiceIngressId = action.payload;
     },
     setPluginSlotDebug: (state, action: PayloadAction<boolean>) => {
       state.pluginSlotDebug = action.payload;

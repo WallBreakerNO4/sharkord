@@ -58,6 +58,8 @@
   "failedUpdateSoundState": "Failed to update sound state",
   "failedUpdateWebcamState": "Failed to update webcam state",
   "failedUpdateScreenShareState": "Failed to update screen share state",
+  "voiceIngressResetToDirect": "The voice route you picked is no longer available. You're now on a direct connection.",
+  "voiceIngressReconnectPausedStreams": "Changing the voice route turned off your camera and screen share.",
   "notificationPermissionDenied": "Notification permission was denied",
   "notificationTitleDm": "{{author}} (DM)",
   "notificationTitleChannel": "{{author}} in #{{channel}}",

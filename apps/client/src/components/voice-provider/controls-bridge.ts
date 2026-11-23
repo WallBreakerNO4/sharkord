@@ -1,6 +1,10 @@
+// reconnectVoice is explicit rather than a state effect on purpose: the route
+// change persists first, then it rebuilds the live transports of an ongoing
+// call. an undefined id means a direct connection
 type TVoiceControlsBridge = {
   setMicMuted: (muted: boolean) => Promise<void>;
   setSoundMuted: (muted: boolean) => Promise<void>;
+  reconnectVoice: (ingressId: string | undefined) => Promise<void>;
 };
 
 // Server settings screens are rendered from a top-level portal and may live

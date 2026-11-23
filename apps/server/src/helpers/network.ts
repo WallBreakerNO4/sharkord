@@ -243,7 +243,9 @@ export {
   isIpOfFamily,
   isPrivateIP,
   isPublicIp,
+  lookupHostname,
   resolveAnnouncedAddress,
   resolveAnnouncedAddressV6,
   resolveInternalAnnouncedAddress
 };
+export type { THostnameLookup };

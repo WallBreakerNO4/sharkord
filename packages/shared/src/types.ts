@@ -57,6 +57,11 @@ export type TRemoteProducerIds = {
   remoteExternalStreamIds: number[];
 };
 
+export type TVoiceIngressOption = {
+  id: string;
+  name: string;
+};
+
 export type TPublicServerSettings = Pick<
   TSettings,
   | 'name'
@@ -79,6 +84,7 @@ export type TPublicServerSettings = Pick<
   | 'storageSignedUrlsEnabled'
 > & {
   webRtcMaxBitrate: number;
+  voiceIngresses: TVoiceIngressOption[];
 };
 
 export type TMessageMediaMetadata = {

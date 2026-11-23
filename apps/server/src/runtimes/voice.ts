@@ -22,8 +22,14 @@ import type {
 import { config, SERVER_INTERNAL_ANNOUNCED_IP } from '../config';
 import { publishVoicePresence } from '../db/publishers';
 import { addInternalIceCandidates } from '../helpers/add-internal-ice-candidates';
+import { applyVoiceIngressCandidates } from '../helpers/apply-voice-ingress-candidates';
+import {
+  getVoiceIngressById,
+  type TResolvedVoiceIngress
+} from '../helpers/voice-ingresses';
 import { logger } from '../logger';
 import { eventBus } from '../plugins/event-bus';
+import { invariant } from '../utils/invariant';
 import {
   mediaSoupWorker,
   webRtcServer,
@@ -605,7 +611,21 @@ class VoiceRuntime {
     this.router = router;
   };
 
-  public createTransport = async () => {
+  public createTransport = async (ingressId?: string) => {
+    // the ingress is proven before the transport is created: one created for an
+    // unknown id could never be handed to the client, it would only leak a
+    // listening port on the home server
+    let ingress: TResolvedVoiceIngress | undefined;
+
+    if (ingressId !== undefined) {
+      ingress = getVoiceIngressById(ingressId);
+
+      invariant(ingress, {
+        code: 'BAD_REQUEST',
+        message: 'Invalid voice ingress'
+      });
+    }
+
     const router = this.getRouter();
 
     const maxBitrate = config.webRtc.maxBitrate;
@@ -622,21 +642,41 @@ class VoiceRuntime {
     await transport.setMaxIncomingBitrate(maxBitrate);
     await transport.setMaxOutgoingBitrate(maxBitrate);
 
+    // through an ingress the announced candidates are replaced outright, never
+    // extended: the client must not even see the home server's address
+    const iceCandidates = ingress
+      ? applyVoiceIngressCandidates(transport.iceCandidates, ingress)
+      : addInternalIceCandidates(
+          transport.iceCandidates,
+          SERVER_INTERNAL_ANNOUNCED_IP
+        );
+
+    // a rewrite that dropped every candidate leaves the client nothing to connect
+    // to, that is a server side problem rather than a slow connection
+    if (ingress && iceCandidates.length === 0) {
+      transport.close();
+
+      invariant(false, {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Voice ingress has no usable ICE candidates'
+      });
+    }
+
     const params: TTransportParams = {
       id: transport.id,
       iceParameters: transport.iceParameters,
-      iceCandidates: addInternalIceCandidates(
-        transport.iceCandidates,
-        SERVER_INTERNAL_ANNOUNCED_IP
-      ),
+      iceCandidates,
       dtlsParameters: transport.dtlsParameters
     };
 
     return { transport, params };
   };
 
-  public createConsumerTransport = async (userId: number) => {
-    const { transport, params } = await this.createTransport();
+  public createConsumerTransport = async (
+    userId: number,
+    ingressId?: string
+  ) => {
+    const { transport, params } = await this.createTransport(ingressId);
 
     this.consumerTransports[userId]?.close();
     this.consumerTransports[userId] = transport;
@@ -676,8 +716,11 @@ class VoiceRuntime {
     return this.consumerTransports[userId];
   };
 
-  public createProducerTransport = async (userId: number) => {
-    const { params, transport } = await this.createTransport();
+  public createProducerTransport = async (
+    userId: number,
+    ingressId?: string
+  ) => {
+    const { params, transport } = await this.createTransport(ingressId);
 
     this.producerTransports[userId]?.close();
     this.producerTransports[userId] = transport;

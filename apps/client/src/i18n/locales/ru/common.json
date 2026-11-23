@@ -58,6 +58,8 @@
   "failedUpdateSoundState": "Не удалось обновить состояние звука",
   "failedUpdateWebcamState": "Не удалось обновить состояние камеры",
   "failedUpdateScreenShareState": "Не удалось обновить состояние демонстрации экрана",
+  "voiceIngressResetToDirect": "Выбранный ранее маршрут голоса больше недоступен. Вы вернулись к прямому подключению.",
+  "voiceIngressReconnectPausedStreams": "Смена маршрута голоса отключила камеру и трансляцию экрана.",
   "notificationPermissionDenied": "В разрешении на уведомления отказано",
   "notificationTitleDm": "{{author}} (ЛС)",
   "notificationTitleChannel": "{{author}} в #{{channel}}",

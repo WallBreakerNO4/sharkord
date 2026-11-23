@@ -58,6 +58,8 @@
   "failedUpdateSoundState": "Impossibile aggiornare lo stato dell’audio",
   "failedUpdateWebcamState": "Impossibile aggiornare lo stato della webcam",
   "failedUpdateScreenShareState": "Impossibile aggiornare la condivisione schermo",
+  "voiceIngressResetToDirect": "Il percorso vocale scelto in precedenza non è più disponibile. Sei tornato alla connessione diretta.",
+  "voiceIngressReconnectPausedStreams": "Il cambio di percorso vocale ha disattivato la webcam e la condivisione dello schermo.",
   "notificationPermissionDenied": "Permesso per le notifiche negato",
   "notificationTitleDm": "{{author}} (MD)",
   "notificationTitleChannel": "{{author}} in #{{channel}}",

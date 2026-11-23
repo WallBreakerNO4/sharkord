@@ -2,6 +2,7 @@ import { assertNotificationsPermission } from '@/helpers/assert-notifications-pe
 import { getFileUrl, getUrlFromServer } from '@/helpers/get-file-url';
 import {
   LocalStorageKey,
+  removeLocalStorageItem,
   setLocalStorageItem,
   setLocalStorageItemAsJSON,
   setLocalStorageItemBool
@@ -196,6 +197,19 @@ export const setMicMode = (micMode: MicMode) => {
   store.dispatch(appSliceActions.setMicMode(micMode));
 
   setLocalStorageItem(LocalStorageKey.MIC_MODE, micMode);
+};
+
+// an undefined route means a direct connection, nothing is worth keeping in
+// the storage for that so the key is dropped instead of saved as empty
+export const setVoiceIngressId = (ingressId: string | undefined) => {
+  store.dispatch(appSliceActions.setVoiceIngressId(ingressId));
+
+  if (ingressId === undefined) {
+    removeLocalStorageItem(LocalStorageKey.VOICE_INGRESS_ID);
+    return;
+  }
+
+  setLocalStorageItem(LocalStorageKey.VOICE_INGRESS_ID, ingressId);
 };
 
 export const setHotkeysEnabled = (enabled: boolean) => {

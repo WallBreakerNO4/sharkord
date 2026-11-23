@@ -58,6 +58,8 @@
   "failedUpdateSoundState": "更新声音状态失败",
   "failedUpdateWebcamState": "更新摄像头状态失败",
   "failedUpdateScreenShareState": "更新屏幕共享状态失败",
+  "voiceIngressResetToDirect": "上次选择的语音接入节点已不可用，已切换为直连。",
+  "voiceIngressReconnectPausedStreams": "切换语音接入节点已关闭你的摄像头与屏幕共享。",
   "notificationPermissionDenied": "通知权限被拒绝",
   "notificationTitleDm": "{{author}}（私信）",
   "notificationTitleChannel": "{{author}} 在 #{{channel}}",

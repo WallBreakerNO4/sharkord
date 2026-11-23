@@ -1,7 +1,17 @@
+import { setVoiceIngressId } from '@/features/app/actions';
+import { useVoiceIngressId } from '@/features/app/hooks';
 import { useCurrentVoiceChannelId } from '@/features/server/channels/hooks';
-import { useWebRtcSimulcastEnabled } from '@/features/server/hooks';
+import {
+  usePublicServerSettings,
+  useWebRtcSimulcastEnabled
+} from '@/features/server/hooks';
 import { SoundType } from '@/features/server/types';
-import { updateOwnVoiceState } from '@/features/server/voice/actions';
+import {
+  consumeEffectiveVoiceIngress,
+  leaveVoice,
+  requestVoiceJoin,
+  updateOwnVoiceState
+} from '@/features/server/voice/actions';
 import { useOwnVoiceState } from '@/features/server/voice/hooks';
 import {
   clampMicrophoneDecibels,
@@ -56,6 +66,8 @@ import {
   useRef,
   useState
 } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useDevices } from '../devices-provider/hooks/use-devices';
 import {
   clearVoiceControlsBridge,
@@ -232,9 +244,13 @@ const VoiceProvider = memo(({ children }: TVoiceProviderProps) => {
   >({});
   const currentVoiceChannelId = useCurrentVoiceChannelId();
   const webRtcSimulcastEnabled = useWebRtcSimulcastEnabled();
+  const publicSettings = usePublicServerSettings();
+  const voiceIngresses = publicSettings?.voiceIngresses;
+  const storedIngressId = useVoiceIngressId();
   const ownVoiceState = useOwnVoiceState();
   const { devices } = useDevices();
   const { isScreenShareSupported } = useScreenShareSupport();
+  const { t } = useTranslation('common');
 
   const simulcastEnabled =
     !!webRtcSimulcastEnabled && !!devices.simulcastEnabled;
@@ -1358,6 +1374,8 @@ const VoiceProvider = memo(({ children }: TVoiceProviderProps) => {
     ]
   );
 
+  const activeIngressIdRef = useRef<string | undefined>(undefined);
+
   const cleanup = useCallback(() => {
     voiceLogger.info('session: cleanup');
 
@@ -1369,6 +1387,7 @@ const VoiceProvider = memo(({ children }: TVoiceProviderProps) => {
     clearExternalStreams();
     cleanupTransports();
     deviceRtpCapabilities.current = null;
+    activeIngressIdRef.current = undefined;
 
     setConnectionStatus(ConnectionStatus.DISCONNECTED);
   }, [
@@ -1419,8 +1438,14 @@ const VoiceProvider = memo(({ children }: TVoiceProviderProps) => {
           throw new Error('Failed to load device RTP capabilities');
         }
 
-        await createProducerTransport(device);
-        await createConsumerTransport(device);
+        // resolve once for both transports and pin the live route ref so a
+        // later switch away from a removed ingress still triggers a reconnect
+        const ingressId = consumeEffectiveVoiceIngress();
+
+        activeIngressIdRef.current = ingressId;
+
+        await createProducerTransport(device, ingressId);
+        await createConsumerTransport(device, ingressId);
 
         // start the microphone before consuming so firefox has an active
         // getUserMedia capture when the recv transport gathers candidates
@@ -1485,16 +1510,99 @@ const VoiceProvider = memo(({ children }: TVoiceProviderProps) => {
     [ownVoiceState.soundMuted, toggleSound]
   );
 
+  const isReconnectingIngressRef = useRef(false);
+
+  const reconnectVoice = useCallback(
+    async (nextIngressId: string | undefined) => {
+      // not in a voice channel: just persist, the next join picks it up
+      if (!currentVoiceChannelId) {
+        if (storedIngressId !== nextIngressId) {
+          setVoiceIngressId(nextIngressId);
+        }
+
+        return;
+      }
+
+      // compare against the live transport's route, not the stored preference:
+      // if the server removed the active node while the call stayed up, picking
+      // direct still has to rebuild the transports off that old node
+      if (activeIngressIdRef.current === nextIngressId) {
+        if (storedIngressId !== nextIngressId) {
+          setVoiceIngressId(nextIngressId);
+        }
+
+        return;
+      }
+
+      // a reconnect is already rebuilding the transports. the request is
+      // dropped rather than queued, so the stored route keeps matching the
+      // one the live session is being built on
+      if (isReconnectingIngressRef.current) return;
+
+      setVoiceIngressId(nextIngressId);
+      isReconnectingIngressRef.current = true;
+
+      try {
+        // the rebuilt session drops the camera and screen share producers,
+        // the own state has to follow or the ui keeps showing them as active
+        if (ownVoiceState.webcamEnabled || ownVoiceState.sharingScreen) {
+          updateOwnVoiceState({ webcamEnabled: false, sharingScreen: false });
+          toast.info(t('voiceIngressReconnectPausedStreams'));
+        }
+
+        voiceLogger.info('session: reconnecting on route change', {
+          channelId: currentVoiceChannelId,
+          ingressId: nextIngressId
+        });
+
+        const routerRtpCapabilities = await requestVoiceJoin(
+          currentVoiceChannelId
+        );
+
+        // the join itself failed, its own toast already said why
+        if (!routerRtpCapabilities) return;
+
+        await init(routerRtpCapabilities, currentVoiceChannelId);
+      } catch (error) {
+        voiceLogger.error('session: reconnect on route change failed', error, {
+          channelId: currentVoiceChannelId
+        });
+
+        await leaveVoice({ reason: 'init_failed' });
+        toast.error(t('failedInitVoiceConnection'));
+      } finally {
+        isReconnectingIngressRef.current = false;
+      }
+    },
+    [
+      storedIngressId,
+      ownVoiceState.webcamEnabled,
+      ownVoiceState.sharingScreen,
+      currentVoiceChannelId,
+      init,
+      t
+    ]
+  );
+
+  // a route removed from the server settings is dropped as soon as the new
+  // settings land, through the single shared stale handler
+  useEffect(() => {
+    if (!voiceIngresses || !storedIngressId) return;
+
+    consumeEffectiveVoiceIngress();
+  }, [voiceIngresses, storedIngressId]);
+
   useEffect(() => {
     setVoiceControlsBridge({
       setMicMuted: setMicMutedForBridge,
-      setSoundMuted: setSoundMutedForBridge
+      setSoundMuted: setSoundMutedForBridge,
+      reconnectVoice
     });
 
     return () => {
       clearVoiceControlsBridge();
     };
-  }, [setMicMutedForBridge, setSoundMutedForBridge]);
+  }, [setMicMutedForBridge, setSoundMutedForBridge, reconnectVoice]);
 
   useVoiceEvents({
     consume,

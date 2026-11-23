@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { parse, stringify } from 'ini';
 import { defaultConfig, envOverridesMap, zConfig } from '../config';
 import { applyEnvOverrides } from '../helpers/apply-env-overrides';
+import { deepMerge } from '../utils/deep-merge';
 
 // applyEnvOverrides deliberately does no validation of its own: it drops whatever the env var
 // says into the config object. what stops a bad value reaching the running server is the
@@ -42,6 +44,118 @@ describe('host default', () => {
 describe('backupDatabase default', () => {
   test('should be on, since it is the only thing that makes a bad migration recoverable', () => {
     expect(defaultConfig.server.backupDatabase).toBe(true);
+  });
+});
+
+// config.ini is rewritten on every boot, so the parsed shape has to survive
+// stringify -> parse -> validate unchanged, or the next boot loses the ingresses
+describe('webRtc.ingresses', () => {
+  // the exact sequence config.ts runs at boot: parse, merge over the defaults, validate
+  const bootParse = (text: string) =>
+    zConfig.parse(
+      deepMerge(defaultConfig, parse(text) as Partial<typeof defaultConfig>)
+    );
+
+  const ingressIniText = (fields: {
+    name?: string;
+    address?: string;
+    addressV6?: string;
+    port?: string;
+  }) => {
+    const lines = ['[webRtc.ingresses.eu]'];
+
+    if (fields.name !== undefined) lines.push(`name = ${fields.name}`);
+    if (fields.address !== undefined) lines.push(`address = ${fields.address}`);
+    if (fields.addressV6 !== undefined)
+      lines.push(`addressV6 = ${fields.addressV6}`);
+    if (fields.port !== undefined) lines.push(`port = ${fields.port}`);
+
+    return lines.join('\n');
+  };
+
+  const INGRESS_FIELDS = {
+    name: '欧洲 (CN2)',
+    address: '1.2.3.4',
+    addressV6: '',
+    port: '40000'
+  };
+
+  test('defaults to no ingresses', () => {
+    expect(zConfig.parse(defaultConfig).webRtc.ingresses).toEqual({});
+  });
+
+  test('parses a section per ingress and drops unset optionals', () => {
+    const parsed = bootParse(ingressIniText(INGRESS_FIELDS));
+
+    expect(parsed.webRtc.ingresses).toEqual({
+      eu: { name: '欧洲 (CN2)', address: '1.2.3.4', port: 40000 }
+    });
+  });
+
+  test('parses an ingress without a port as unset', () => {
+    const parsed = bootParse(
+      ingressIniText({ name: '欧洲 (CN2)', address: '1.2.3.4' })
+    );
+
+    expect(parsed.webRtc.ingresses).toEqual({
+      eu: { name: '欧洲 (CN2)', address: '1.2.3.4' }
+    });
+  });
+
+  test('survives the rewrite cycle with an ingress configured', () => {
+    const first = bootParse(ingressIniText(INGRESS_FIELDS));
+
+    const second = bootParse(stringify(first));
+
+    expect(second).toEqual(first);
+  });
+
+  test('survives the rewrite cycle with no ingresses configured', () => {
+    const first = bootParse(stringify(defaultConfig));
+
+    const second = bootParse(stringify(first));
+
+    expect(second.webRtc.ingresses).toEqual({});
+    expect(second).toEqual(first);
+  });
+
+  test('rejects an id with characters outside the allowed set', () => {
+    const text = ingressIniText(INGRESS_FIELDS).replace(
+      'webRtc.ingresses.eu',
+      'webRtc.ingresses.e u'
+    );
+
+    expect(() => bootParse(text)).toThrow();
+  });
+
+  test('rejects an id longer than 64 characters', () => {
+    const id = 'a'.repeat(65);
+    const text = ingressIniText(INGRESS_FIELDS).replace(
+      'webRtc.ingresses.eu',
+      `webRtc.ingresses.${id}`
+    );
+
+    expect(() => bootParse(text)).toThrow();
+  });
+
+  test('rejects an empty name', () => {
+    expect(() =>
+      bootParse(ingressIniText({ ...INGRESS_FIELDS, name: '' }))
+    ).toThrow();
+  });
+
+  test('rejects an empty address', () => {
+    expect(() =>
+      bootParse(ingressIniText({ ...INGRESS_FIELDS, address: '' }))
+    ).toThrow();
+  });
+
+  test('rejects a port outside the allowed range', () => {
+    for (const port of ['0', '65536', 'not-a-port']) {
+      expect(() =>
+        bootParse(ingressIniText({ ...INGRESS_FIELDS, port }))
+      ).toThrow();
+    }
   });
 });
 
@@ -125,6 +239,39 @@ describe('env overrides are validated', () => {
 
   test('should reject an invalid webRtc override', () => {
     setEnv('SHARKORD_WEBRTC_MAX_BITRATE', '0');
+
+    expect(applyOverrides).toThrow();
+  });
+
+  test('should accept a voice ingress list from the env', () => {
+    setEnv(
+      'SHARKORD_WEBRTC_INGRESSES',
+      JSON.stringify({
+        eu: { name: '欧洲 (CN2)', address: '1.2.3.4', port: 40000 },
+        us: { name: '美国 (CN2)', address: 'edge-us.example.com' }
+      })
+    );
+
+    expect(applyOverrides().webRtc.ingresses).toEqual({
+      eu: { name: '欧洲 (CN2)', address: '1.2.3.4', port: 40000 },
+      us: { name: '美国 (CN2)', address: 'edge-us.example.com' }
+    });
+  });
+
+  test('should reject a voice ingress with an empty name from the env', () => {
+    setEnv(
+      'SHARKORD_WEBRTC_INGRESSES',
+      JSON.stringify({ eu: { name: '', address: '1.2.3.4' } })
+    );
+
+    expect(applyOverrides).toThrow();
+  });
+
+  test('should reject a voice ingress id with a space from the env', () => {
+    setEnv(
+      'SHARKORD_WEBRTC_INGRESSES',
+      JSON.stringify({ 'e u': { name: '欧洲 (CN2)', address: '1.2.3.4' } })
+    );
 
     expect(applyOverrides).toThrow();
   });

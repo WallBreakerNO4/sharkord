@@ -58,6 +58,8 @@
   "failedUpdateSoundState": "Falha ao atualizar o estado do som",
   "failedUpdateWebcamState": "Falha ao atualizar o estado da webcam",
   "failedUpdateScreenShareState": "Falha ao atualizar o estado do compartilhamento de tela",
+  "voiceIngressResetToDirect": "A rota de voz que você escolheu não está mais disponível. Você voltou à conexão direta.",
+  "voiceIngressReconnectPausedStreams": "Trocar a rota de voz desligou sua câmera e o compartilhamento de tela.",
   "notificationPermissionDenied": "A permissão de notificação foi negada",
   "notificationTitleDm": "{{author}} (DM)",
   "notificationTitleChannel": "{{author}} em #{{channel}}",

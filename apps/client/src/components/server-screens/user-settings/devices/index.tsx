@@ -3,6 +3,7 @@ import { HotkeyBindGroup } from '@/components/hotkey-input/hotkey-bind-group';
 import { ResolutionFpsControl } from '@/components/resolution-fps-control';
 import { ScreenShareSettings } from '@/components/screen-share-settings';
 import { useSettingsForm } from '@/components/server-screens/settings-shell/use-settings-form';
+import { VoiceIngressSelect } from '@/components/voice-ingress-select';
 import { getVoiceControlsBridge } from '@/components/voice-provider/controls-bridge';
 import { useHotkeysEnabled } from '@/features/app/hooks';
 import { useCurrentVoiceChannelId } from '@/features/server/channels/hooks';
@@ -434,6 +435,8 @@ const Devices = memo(() => {
 
           <audio ref={testAudioRef} className="hidden" />
         </Group>
+
+        <VoiceIngressSelect />
       </div>
 
       <Separator />

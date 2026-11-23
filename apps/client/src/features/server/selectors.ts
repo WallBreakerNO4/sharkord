@@ -8,7 +8,8 @@ import {
   PluginSlot,
   type TDesktopConnectionState,
   type TJoinedRole,
-  type TPluginStoreState
+  type TPluginStoreState,
+  type TVoiceIngressOption
 } from '@sharkord/shared';
 import { createCachedSelector } from 're-reselect';
 import {
@@ -88,6 +89,13 @@ export const pluginsEnabledSelector = (state: IRootState) =>
 
 export const webRtcSimulcastEnabledSelector = (state: IRootState) =>
   !!state.server.publicSettings?.webRtcSimulcastEnabled;
+
+// the fallback keeps the reference stable, so components subscribed to this
+// selector do not re-render on every dispatch while the settings load
+const DEFAULT_VOICE_INGRESSES: TVoiceIngressOption[] = [];
+
+export const voiceIngressesSelector = (state: IRootState) =>
+  state.server.publicSettings?.voiceIngresses ?? DEFAULT_VOICE_INGRESSES;
 
 export const infoSelector = (state: IRootState) => state.server.info;
 

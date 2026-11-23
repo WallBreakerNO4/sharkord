@@ -58,6 +58,8 @@
   "failedUpdateSoundState": "Aktualizace stavu zvuku se nezdařila",
   "failedUpdateWebcamState": "Aktualizace stavu kamery se nezdařila",
   "failedUpdateScreenShareState": "Aktualizace sdílení obrazovky se nezdařila",
+  "voiceIngressResetToDirect": "Dříve vybraná trasa hlasového spojení už není k dispozici. Jsi zpět na přímém spojení.",
+  "voiceIngressReconnectPausedStreams": "Změna trasy hlasového spojení vypnula tvou kameru i sdílení obrazovky.",
   "notificationPermissionDenied": "Oprávnění k oznámením bylo zamítnuto",
   "notificationTitleDm": "{{author}} (SZ)",
   "notificationTitleChannel": "{{author}} v #{{channel}}",

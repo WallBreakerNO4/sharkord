@@ -1,5 +1,6 @@
 import { useDevices } from '@/components/devices-provider/hooks/use-devices';
 import { Dialog } from '@/components/dialogs/dialogs';
+import { VoiceIngressSelect } from '@/components/voice-ingress-select';
 import { useVoiceStats } from '@/components/voice-provider/stats-context';
 import { openDialog } from '@/features/dialogs/actions';
 import { formatBigNumber } from '@/helpers/format-big-number';
@@ -220,6 +221,8 @@ const StatsContent = memo(() => {
           )}
         </div>
       </div>
+
+      <VoiceIngressSelect compact />
 
       {hasNoiseSuppression && (
         <div className="border-t border-border/50 pt-2 mb-3">

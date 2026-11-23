@@ -7,16 +7,19 @@ import {
   ServerEvents,
   StreamKind
 } from '@sharkord/shared';
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { and, eq } from 'drizzle-orm';
 import { createFakeSocket, initTest } from '../../__tests__/helpers';
 import { tdb } from '../../__tests__/setup';
+import { config } from '../../config';
 import {
   channelRolePermissions,
   rolePermissions,
   roles
 } from '../../db/schema';
 import { getRateLimit } from '../../helpers/rate-limits';
+import type { TResolvedVoiceIngress } from '../../helpers/voice-ingresses';
+import * as voiceIngresses from '../../helpers/voice-ingresses';
 import { VoiceRuntime } from '../../runtimes/voice';
 import { pubsub } from '../../utils/pubsub';
 
@@ -1137,6 +1140,171 @@ describe('voice router', () => {
         await runtime.destroy();
       }
     });
+  });
+
+  // the transports here are real, on the dev webRtcServer, but no peer connects to
+  // them from the harness, so ICE/DTLS and media actually arriving stay uncovered
+  // (the same trade the plugin transport tests make)
+  describe('edge ingress transports', () => {
+    const INGRESS: TResolvedVoiceIngress = {
+      id: 'test-eu',
+      name: '欧洲 (CN2)',
+      address: '198.51.100.10',
+      port: 41000
+    };
+
+    // a runtime with a real router, so the routes create actual transports
+    const joinInitializedVoiceChannel = async (userId: number) => {
+      const runtime = new VoiceRuntime(VOICE_CHANNEL_ID);
+
+      await runtime.init();
+      runtime.addUser(userId, { micMuted: false, soundMuted: false });
+
+      const { caller } = await initTest(userId, undefined, {
+        currentVoiceChannelId: VOICE_CHANNEL_ID
+      });
+
+      return { runtime, caller };
+    };
+
+    test('should create a direct producer transport without an ingress', async () => {
+      const { runtime, caller } = await joinInitializedVoiceChannel(2);
+
+      try {
+        const params = await caller.voice.createProducerTransport();
+
+        expect(params.iceCandidates.length).toBeGreaterThan(0);
+
+        // a direct call keeps the announced candidates: nothing is rewritten
+        for (const candidate of params.iceCandidates) {
+          expect(candidate.port).toBe(+config.webRtc.port);
+          expect(candidate.address).not.toBe(INGRESS.address);
+        }
+      } finally {
+        await runtime.destroy();
+      }
+    });
+
+    test('should create a direct consumer transport without an ingress', async () => {
+      const { runtime, caller } = await joinInitializedVoiceChannel(2);
+
+      try {
+        const params = await caller.voice.createConsumerTransport();
+
+        expect(params.iceCandidates.length).toBeGreaterThan(0);
+
+        for (const candidate of params.iceCandidates) {
+          expect(candidate.port).toBe(+config.webRtc.port);
+          expect(candidate.address).not.toBe(INGRESS.address);
+        }
+      } finally {
+        await runtime.destroy();
+      }
+    });
+
+    test('should rewrite every producer candidate to a valid ingress', async () => {
+      spyOn(voiceIngresses, 'getVoiceIngressById').mockReturnValue(INGRESS);
+
+      const { runtime, caller } = await joinInitializedVoiceChannel(2);
+
+      try {
+        const params = await caller.voice.createProducerTransport({
+          ingressId: INGRESS.id
+        });
+
+        expect(params.iceCandidates.length).toBeGreaterThan(0);
+
+        // strict: every candidate is the ingress, none of the home server's
+        for (const candidate of params.iceCandidates) {
+          expect(candidate.ip).toBe(INGRESS.address);
+          expect(candidate.address).toBe(INGRESS.address);
+          expect(candidate.port).toBe(INGRESS.port);
+        }
+      } finally {
+        await runtime.destroy();
+      }
+    });
+
+    test('should rewrite every consumer candidate to a valid ingress', async () => {
+      spyOn(voiceIngresses, 'getVoiceIngressById').mockReturnValue(INGRESS);
+
+      const { runtime, caller } = await joinInitializedVoiceChannel(2);
+
+      try {
+        const params = await caller.voice.createConsumerTransport({
+          ingressId: INGRESS.id
+        });
+
+        expect(params.iceCandidates.length).toBeGreaterThan(0);
+
+        for (const candidate of params.iceCandidates) {
+          expect(candidate.address).toBe(INGRESS.address);
+          expect(candidate.port).toBe(INGRESS.port);
+        }
+      } finally {
+        await runtime.destroy();
+      }
+    });
+
+    // the id is proven before the transport is created, so refusing it leaks nothing
+    test('should refuse an unknown ingress id without creating a producer transport', async () => {
+      spyOn(voiceIngresses, 'getVoiceIngressById').mockReturnValue(undefined);
+
+      const { runtime, caller } = await joinInitializedVoiceChannel(2);
+
+      try {
+        await expect(
+          caller.voice.createProducerTransport({ ingressId: 'unknown' })
+        ).rejects.toThrow('Invalid voice ingress');
+
+        expect(runtime.getProducerTransport(2)).toBeUndefined();
+      } finally {
+        await runtime.destroy();
+      }
+    });
+
+    test('should refuse an unknown ingress id without creating a consumer transport', async () => {
+      spyOn(voiceIngresses, 'getVoiceIngressById').mockReturnValue(undefined);
+
+      const { runtime, caller } = await joinInitializedVoiceChannel(2);
+
+      try {
+        await expect(
+          caller.voice.createConsumerTransport({ ingressId: 'unknown' })
+        ).rejects.toThrow('Invalid voice ingress');
+
+        expect(runtime.getConsumerTransport(2)).toBeUndefined();
+      } finally {
+        await runtime.destroy();
+      }
+    });
+
+    test('should refuse a blank or oversized ingress id at validation', async () => {
+      const { runtime, caller } = await joinInitializedVoiceChannel(2);
+
+      try {
+        for (const ingressId of ['   ', 'a'.repeat(65)]) {
+          await expect(
+            caller.voice.createProducerTransport({ ingressId })
+          ).rejects.toThrow();
+
+          await expect(
+            caller.voice.createConsumerTransport({ ingressId })
+          ).rejects.toThrow();
+        }
+
+        expect(runtime.getProducerTransport(2)).toBeUndefined();
+        expect(runtime.getConsumerTransport(2)).toBeUndefined();
+      } finally {
+        await runtime.destroy();
+      }
+    });
+
+    // an ingress whose rewrite drops every candidate (a transport with only ipv6
+    // candidates and an ingress without ipv6) cannot be produced here: the dev
+    // webRtcServer listens on 127.0.0.1 only, so every transport it creates has ipv4
+    // candidates. the empty rewrite itself is covered by the
+    // applyVoiceIngressCandidates unit tests
   });
 });
 

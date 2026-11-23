@@ -2,6 +2,7 @@ import type { TJoinedSettings, TPublicServerSettings } from '@sharkord/shared';
 import { eq } from 'drizzle-orm';
 import { db } from '..';
 import { config } from '../../config';
+import { getResolvedVoiceIngresses } from '../../helpers/voice-ingresses';
 import { files, settings } from '../schema';
 
 // since this is static, we can keep it in memory to avoid querying the DB every time
@@ -32,6 +33,7 @@ const getSettings = async (): Promise<TJoinedSettings> => {
 
 const getPublicSettings: () => Promise<TPublicServerSettings> = async () => {
   const settings = await getSettings();
+  const resolvedVoiceIngresses = getResolvedVoiceIngresses();
 
   const publicSettings: TPublicServerSettings = {
     description: settings.description ?? '',
@@ -53,7 +55,10 @@ const getPublicSettings: () => Promise<TPublicServerSettings> = async () => {
     webRtcMaxBitrate: config.webRtc.maxBitrate,
     enableSearch: settings.enableSearch,
     showWelcomeDialog: settings.showWelcomeDialog,
-    storageSignedUrlsEnabled: settings.storageSignedUrlsEnabled
+    storageSignedUrlsEnabled: settings.storageSignedUrlsEnabled,
+    // the resolved nodes carry the backend address and port, the client only ever
+    // displays the node, so just the id and the name leave the server
+    voiceIngresses: resolvedVoiceIngresses.map(({ id, name }) => ({ id, name }))
   };
 
   return publicSettings;

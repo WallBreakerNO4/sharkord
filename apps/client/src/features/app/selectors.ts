@@ -86,6 +86,9 @@ export const voiceChatSidebarOpenSelector = (state: IRootState) =>
 export const voiceChatChannelIdSelector = (state: IRootState) =>
   state.app.voiceChatChannelId;
 
+export const voiceIngressIdSelector = (state: IRootState) =>
+  state.app.voiceIngressId;
+
 export const pluginSlotDebugSelector = (state: IRootState) =>
   state.app.pluginSlotDebug;
 

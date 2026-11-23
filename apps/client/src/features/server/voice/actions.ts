@@ -1,13 +1,15 @@
 import type { TPinnedCard } from '@/components/channel-view/voice/hooks/use-pin-card-controller';
 import {
   assertVoiceChatClose,
-  openVoiceChatSidebar
+  openVoiceChatSidebar,
+  setVoiceIngressId
 } from '@/features/app/actions';
 import {
   closeVoiceChatOnLeaveSelector,
   pushToTalkSelectedSelector,
   voiceChatFollowsVoiceSelector,
-  voiceChatSidebarDataSelector
+  voiceChatSidebarDataSelector,
+  voiceIngressIdSelector
 } from '@/features/app/selectors';
 import { store } from '@/features/store';
 import { voiceLogger } from '@/helpers/browser-logger';
@@ -17,6 +19,7 @@ import {
   setLocalStorageItem,
   setLocalStorageItemBool
 } from '@/helpers/storage';
+import { resolveEffectiveVoiceIngress } from '@/helpers/voice-ingress';
 import { i18n } from '@/i18n';
 import { getTRPCClient } from '@/lib/trpc';
 import {
@@ -35,6 +38,7 @@ import {
   currentVoiceChannelIdSelector,
   selectedChannelIdSelector
 } from '../channels/selectors';
+import { publicServerSettingsSelector } from '../selectors';
 import { serverSliceActions } from '../slice';
 import { SoundType } from '../types';
 import { ownUserIdSelector } from '../users/selectors';
@@ -319,6 +323,30 @@ export const requestVoiceJoin = async (
   }
 
   return undefined;
+};
+
+// the ingress id the next transport creation should be pinned to. a stored id
+// the server no longer configures is cleared right here, so no transport is
+// ever created against an id the server would reject. the store write keeps the
+// next call direct, which is what makes the toast below fire exactly once per
+// stale id instead of once per transport
+export const consumeEffectiveVoiceIngress = (): string | undefined => {
+  const state = store.getState();
+  const storedIngressId = voiceIngressIdSelector(state);
+  const publicSettings = publicServerSettingsSelector(state);
+  const selection = resolveEffectiveVoiceIngress(
+    storedIngressId,
+    publicSettings?.voiceIngresses
+  );
+
+  if (selection.isStale) {
+    setVoiceIngressId(undefined);
+    toast.info(i18n.t('common:voiceIngressResetToDirect'));
+
+    return undefined;
+  }
+
+  return selection.effectiveIngressId;
 };
 
 export type TLeaveVoiceReason =

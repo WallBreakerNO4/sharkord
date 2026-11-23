@@ -58,6 +58,8 @@
   "failedUpdateSoundState": "Ses durumu güncellenemedi",
   "failedUpdateWebcamState": "Web kamerası durumu güncellenemedi",
   "failedUpdateScreenShareState": "Ekran paylaşımı durumu güncellenemedi",
+  "voiceIngressResetToDirect": "Seçtiğiniz ses rotası artık kullanılamıyor. Doğrudan bağlantıya geçildi.",
+  "voiceIngressReconnectPausedStreams": "Ses rotasını değiştirmek kameranızı ve ekran paylaşımınızı kapattı.",
   "notificationPermissionDenied": "Bildirim izni reddedildi",
   "notificationTitleDm": "{{author}} (DM)",
   "notificationTitleChannel": "#{{channel}} kanalında {{author}}",
