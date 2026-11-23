@@ -61,8 +61,15 @@ export const setInfo = (info: TServerInfo | undefined) => {
   store.dispatch(serverSliceActions.setInfo(info));
 };
 
-export const setActiveFullscreenPluginId = (pluginId: string | undefined) => {
-  store.dispatch(serverSliceActions.setActiveFullscreenPluginId(pluginId));
+export const setActiveFullscreenPluginId = (
+  pluginId: string | undefined,
+  pageId?: string
+) => {
+  store.dispatch(
+    serverSliceActions.setActiveFullscreenPluginId(
+      pluginId ? { pluginId, pageId } : undefined
+    )
+  );
 };
 
 export const connect = async () => {
@@ -332,9 +339,15 @@ window.useToken = async (token: string) => {
   const trpc = getTRPCClient();
 
   try {
-    await trpc.others.useSecretToken.mutate({ token });
+    const { showServerWizard } = await trpc.others.useSecretToken.mutate({
+      token
+    });
 
     toast.success(i18n.t('common:nowServerOwner'));
+
+    if (showServerWizard) {
+      openDialog(Dialog.SERVER_WIZARD);
+    }
   } catch {
     toast.error(i18n.t('common:invalidAccessToken'));
   }

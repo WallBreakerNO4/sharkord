@@ -12,6 +12,7 @@ import { channelReadStateByIdSelector } from './channels/selectors';
 import { getConversationKey, rolesCan } from './helpers';
 import {
   activeFullscreenPluginIdSelector,
+  activePluginPageIdSelector,
   categoryHasUnreadMentionsSelector,
   categoryUnreadMessagesCountSelector,
   connectedSelector,
@@ -33,6 +34,7 @@ import {
   referenceableChannelsSelector,
   serverIdSelector,
   serverNameSelector,
+  sidebarPluginPagesSelector,
   totalHasUnreadMentionsSelector,
   totalUnreadCountSelector,
   typingUsersByConversationKeySelector,
@@ -198,6 +200,12 @@ export const useHasUnreadMentions = (channelId: number) =>
 
 export const useActiveFullscreenPluginId = () =>
   useSelector(activeFullscreenPluginIdSelector);
+
+export const useActivePluginPageId = () =>
+  useSelector(activePluginPageIdSelector);
+
+export const useSidebarPluginPages = () =>
+  useSelector(sidebarPluginPagesSelector);
 
 export const useDmsOpen = () => useSelector(dmsOpenSelector);
 

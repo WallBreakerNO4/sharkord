@@ -1,22 +1,25 @@
 import { TextChannel } from '@/components/channel-view/text';
 import { VoiceChannel } from '@/components/channel-view/voice';
+import { PluginPageRenderer } from '@/components/plugin-page-renderer';
 import { PluginSlotRenderer } from '@/components/plugin-slot-renderer';
 import { ThreadContent } from '@/components/thread-sidebar/thread-content';
 import { setSelectedThread } from '@/features/app/actions';
 import { useSelectedThread } from '@/features/app/hooks';
+import { setSelectedChannelId } from '@/features/server/channels/actions';
 import {
   useSelectedChannelId,
   useSelectedChannelType
 } from '@/features/server/channels/hooks';
 import {
   useActiveFullscreenPluginId,
+  useActivePluginPageId,
   useServerName
 } from '@/features/server/hooks';
 import { useThreadsOpen } from '@/features/server/threads/hooks';
 import { ChannelType, PluginSlot } from '@sharkord/shared';
 import { Alert, AlertDescription } from '@sharkord/ui';
 import { AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 type TContentWrapperProps = {
@@ -31,19 +34,47 @@ const ContentWrapper = memo(
     const selectedChannelType = useSelectedChannelType();
     const serverName = useServerName();
     const activeFullscreenPluginId = useActiveFullscreenPluginId();
+    const activePluginPageId = useActivePluginPageId();
     const threadsOpen = useThreadsOpen();
     const selectedThread = useSelectedThread();
 
     const onCloseThread = useCallback(() => setSelectedThread(undefined), []);
 
+    const isTextChannelBeingShown =
+      !activeFullscreenPluginId &&
+      !threadsOpen &&
+      !isDmMode &&
+      selectedChannelType === ChannelType.TEXT;
+
+    useEffect(() => {
+      if (!isTextChannelBeingShown) return;
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key !== 'Escape' || e.defaultPrevented) return;
+
+        setSelectedChannelId(undefined);
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isTextChannelBeingShown]);
+
     if (activeFullscreenPluginId) {
       return (
         <main className="flex flex-1 flex-col bg-background relative min-w-0 min-h-0">
           <div className="flex-col gap-2 h-full w-full flex overflow-auto relative bg-background">
-            <PluginSlotRenderer
-              slotId={PluginSlot.FULL_SCREEN}
-              onlyPluginId={activeFullscreenPluginId}
-            />
+            {activePluginPageId ? (
+              <PluginPageRenderer
+                pluginId={activeFullscreenPluginId}
+                pageId={activePluginPageId}
+              />
+            ) : (
+              <PluginSlotRenderer
+                slotId={PluginSlot.FULL_SCREEN}
+                onlyPluginId={activeFullscreenPluginId}
+              />
+            )}
           </div>
         </main>
       );

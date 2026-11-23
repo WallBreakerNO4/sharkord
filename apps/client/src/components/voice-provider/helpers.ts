@@ -263,39 +263,47 @@ const getSimulcastCodec = (
     (c) => c.mimeType.toLowerCase() === VideoCodec.VP8.toLowerCase()
   );
 
-// chrome's media foundation hardware encoders reject the constrained baseline
-// h264 profile (42e01f), which the router lists first among h264 codecs, so a
-// plain find would always hand windows users to the openh264 software encoder.
-// high and main profiles encode in hardware, so prefer them when present.
-const H264_HARDWARE_PROFILE_LEVEL_IDS = ['640032', '4d0032'];
+const isH264MainOrHigh = (codec: RtpCodecCapability) => {
+  const profileLevelId = String(codec.parameters?.['profile-level-id'] ?? '');
+
+  return /^(64|4d)/i.test(profileLevelId);
+};
 
 const getPreferredScreenCodec = (
-  rtpCapabilities: RtpCapabilities | null,
-  codec: VideoCodec
+  sendRtpCapabilities: RtpCapabilities | null,
+  screenCodec: VideoCodec
 ): RtpCodecCapability | undefined => {
-  const codecs = rtpCapabilities?.codecs?.filter(
-    (c) => c.mimeType.toLowerCase() === codec.toLowerCase()
+  if (screenCodec === VideoCodec.AUTO) return undefined;
+
+  const codecs = sendRtpCapabilities?.codecs ?? [];
+
+  if (screenCodec !== VideoCodec.H264_HIGH) {
+    return codecs.find(
+      (c) => c.mimeType.toLowerCase() === screenCodec.toLowerCase()
+    );
+  }
+
+  const h264Codecs = codecs.filter(
+    (c) => c.mimeType.toLowerCase() === VideoCodec.H264.toLowerCase()
   );
 
-  if (!codecs?.length) {
-    return undefined;
-  }
+  return h264Codecs.find(isH264MainOrHigh) ?? h264Codecs[0];
+};
 
-  if (codec !== VideoCodec.H264) {
-    return codecs[0];
-  }
+const setRecordFlag = (
+  record: Record<string, boolean>,
+  key: string,
+  value: boolean
+): Record<string, boolean> => {
+  if (value) return { ...record, [key]: true };
 
-  for (const profileLevelId of H264_HARDWARE_PROFILE_LEVEL_IDS) {
-    const match = codecs.find(
-      (c) => c.parameters?.['profile-level-id'] === profileLevelId
-    );
+  if (!record[key]) return record;
 
-    if (match) {
-      return match;
-    }
-  }
+  const next = { ...record };
 
-  return codecs[0];
+  delete next[key];
+
+  return next;
 };
 
 const getExternalVolumeKey = (pluginId: string, key: string) =>
@@ -369,7 +377,8 @@ export {
   parseStreamQualityDropdownValue,
   resolveVolume,
   savePausedStreamToStorage,
-  saveStreamQualitiesToStorage
+  saveStreamQualitiesToStorage,
+  setRecordFlag
 };
 
 export type {

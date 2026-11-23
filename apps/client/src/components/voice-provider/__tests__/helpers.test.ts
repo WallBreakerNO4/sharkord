@@ -103,84 +103,72 @@ describe('screen share audio default volume', () => {
   });
 });
 
+const videoCodec = (
+  mimeType: string,
+  parameters: RtpCodecCapability['parameters'] = {}
+): RtpCodecCapability => ({
+  kind: 'video',
+  mimeType,
+  preferredPayloadType: 96,
+  clockRate: 90000,
+  parameters
+});
+
+const vp9 = videoCodec('video/VP9');
+const h264ConstrainedBaseline = videoCodec('video/H264', {
+  'profile-level-id': '42e01f'
+});
+const h264High = videoCodec('video/H264', { 'profile-level-id': '640032' });
+const h264Main = videoCodec('video/H264', { 'profile-level-id': '4d0032' });
+
+const chromiumCapabilities: RtpCapabilities = {
+  codecs: [vp9, h264ConstrainedBaseline, h264High, h264Main]
+};
+const firefoxCapabilities: RtpCapabilities = {
+  codecs: [vp9, h264ConstrainedBaseline]
+};
+
 describe('getPreferredScreenCodec', () => {
-  let payloadType = 96;
-
-  const codec = (
-    mimeType: string,
-    profileLevelId?: string
-  ): RtpCodecCapability => {
-    payloadType += 1;
-
-    return {
-      kind: 'video',
-      mimeType,
-      preferredPayloadType: payloadType,
-      clockRate: 90000,
-      parameters: profileLevelId
-        ? { 'profile-level-id': profileLevelId }
-        : undefined
-    };
-  };
-
-  const capabilitiesWith = (codecs: RtpCodecCapability[]): RtpCapabilities => ({
-    codecs
+  test('should leave the choice to mediasoup on auto', () => {
+    expect(
+      getPreferredScreenCodec(chromiumCapabilities, VideoCodec.AUTO)
+    ).toBeUndefined();
   });
 
-  // the router offers constrained baseline (42e01f) before the other h264
-  // profiles, but chrome's media foundation hardware encoders reject it and
-  // fall back to the openh264 software encoder, so the lookup must not just
-  // take the first h264 match
-  test('should pick high over main and constrained baseline', () => {
-    const preferred = getPreferredScreenCodec(
-      capabilitiesWith([
-        codec('video/H264', '42e01f'),
-        codec('video/H264', '640032'),
-        codec('video/H264', '4d0032')
-      ]),
-      VideoCodec.H264
+  test('should keep plain h264 on constrained baseline so firefox can watch', () => {
+    expect(getPreferredScreenCodec(chromiumCapabilities, VideoCodec.H264)).toBe(
+      h264ConstrainedBaseline
     );
-
-    expect(preferred?.parameters?.['profile-level-id']).toBe('640032');
   });
 
-  test('should pick main when high is not offered', () => {
-    const preferred = getPreferredScreenCodec(
-      capabilitiesWith([
-        codec('video/H264', '42e01f'),
-        codec('video/H264', '4d0032')
-      ]),
-      VideoCodec.H264
-    );
-
-    expect(preferred?.parameters?.['profile-level-id']).toBe('4d0032');
+  test('should pick high for h264 high when the device can send it', () => {
+    expect(
+      getPreferredScreenCodec(chromiumCapabilities, VideoCodec.H264_HIGH)
+    ).toBe(h264High);
   });
 
-  test('should settle for constrained baseline when nothing else is offered', () => {
-    const preferred = getPreferredScreenCodec(
-      capabilitiesWith([codec('video/H264', '42e01f')]),
-      VideoCodec.H264
-    );
-
-    expect(preferred?.parameters?.['profile-level-id']).toBe('42e01f');
-  });
-
-  test('should keep the first match for codecs without profiles', () => {
-    const preferred = getPreferredScreenCodec(
-      capabilitiesWith([codec('video/VP9'), codec('video/VP8')]),
-      VideoCodec.VP8
-    );
-
-    expect(preferred?.mimeType).toBe('video/VP8');
-  });
-
-  test('should return nothing without capabilities or a matching codec', () => {
-    expect(getPreferredScreenCodec(null, VideoCodec.H264)).toBeUndefined();
+  test('should pick main for h264 high when high is not available', () => {
     expect(
       getPreferredScreenCodec(
-        capabilitiesWith([codec('video/VP9')]),
-        VideoCodec.H264
+        { codecs: [h264ConstrainedBaseline, h264Main] },
+        VideoCodec.H264_HIGH
       )
+    ).toBe(h264Main);
+  });
+
+  test('should fall back to constrained baseline for h264 high on firefox', () => {
+    expect(
+      getPreferredScreenCodec(firefoxCapabilities, VideoCodec.H264_HIGH)
+    ).toBe(h264ConstrainedBaseline);
+  });
+
+  test('should return nothing for a codec the device cannot send', () => {
+    expect(
+      getPreferredScreenCodec(firefoxCapabilities, VideoCodec.AV1)
     ).toBeUndefined();
+  });
+
+  test('should return nothing before the device is loaded', () => {
+    expect(getPreferredScreenCodec(null, VideoCodec.VP9)).toBeUndefined();
   });
 });

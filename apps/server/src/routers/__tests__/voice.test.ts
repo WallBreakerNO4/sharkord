@@ -129,6 +129,45 @@ describe('voice router', () => {
     ).rejects.toThrow('Too many requests. Please try again shortly.');
   });
 
+  describe('join', () => {
+    const joinUnmuted = async (permissions: ChannelPermission[]) => {
+      await grantOnPrivateVoiceChannel([
+        ChannelPermission.VIEW_CHANNEL,
+        ChannelPermission.JOIN,
+        ...permissions
+      ]);
+
+      const runtime = new VoiceRuntime(PRIVATE_VOICE_CHANNEL_ID);
+
+      await runtime.init();
+
+      const { caller } = await initTest(2);
+
+      try {
+        await caller.voice.join({
+          channelId: PRIVATE_VOICE_CHANNEL_ID,
+          state: { micMuted: false, soundMuted: false }
+        });
+
+        return runtime.getUserState(2);
+      } finally {
+        await runtime.destroy();
+      }
+    };
+
+    test('should keep the requested mic state when the user can speak', async () => {
+      const state = await joinUnmuted([ChannelPermission.SPEAK]);
+
+      expect(state.micMuted).toBe(false);
+    });
+
+    test('should join muted when the user cannot speak in the channel', async () => {
+      const state = await joinUnmuted([]);
+
+      expect(state.micMuted).toBe(true);
+    });
+  });
+
   describe('moveUser', () => {
     test('should reject when the caller lacks MOVE_MEMBERS', async () => {
       const { caller } = await initTest(2);
@@ -1768,6 +1807,116 @@ describe('voice stream revocation', () => {
         sharingScreen: true
       });
     } finally {
+      await runtime.destroy();
+    }
+  });
+});
+
+// the producer is a real mediasoup producer on a plain transport that nobody sends to,
+// which is all canConsume and consume look at. no browser can be driven from here, so
+// packets reaching the viewer stay uncovered
+describe('consume', () => {
+  const withH264HighScreenShare = async () => {
+    const runtime = new VoiceRuntime(VOICE_CHANNEL_ID);
+
+    await runtime.init();
+
+    runtime.addUser(1, { micMuted: false, soundMuted: false });
+    runtime.addUser(2, { micMuted: false, soundMuted: false });
+
+    const router = runtime.getRouter();
+    const transport = await router.createPlainTransport({
+      listenInfo: { protocol: 'udp', ip: '127.0.0.1' }
+    });
+    const producer = await transport.produce({
+      kind: 'video',
+      rtpParameters: {
+        codecs: [
+          {
+            mimeType: 'video/H264',
+            payloadType: 102,
+            clockRate: 90000,
+            parameters: {
+              'packetization-mode': 1,
+              'profile-level-id': '640032',
+              'level-asymmetry-allowed': 1
+            }
+          }
+        ],
+        encodings: [{ ssrc: 22222222 }]
+      }
+    });
+
+    runtime.addProducer(1, StreamKind.SCREEN, producer);
+
+    await runtime.createConsumerTransport(2);
+
+    const { caller } = await initTest(2, undefined, {
+      currentVoiceChannelId: VOICE_CHANNEL_ID
+    });
+
+    // what firefox advertises: h264 only in constrained baseline
+    const constrainedBaselineOnly = {
+      ...router.rtpCapabilities,
+      codecs: router.rtpCapabilities.codecs?.filter(
+        (codec) =>
+          codec.mimeType !== 'video/H264' ||
+          codec.parameters?.['profile-level-id'] === '42e01f'
+      )
+    };
+
+    return {
+      runtime,
+      caller,
+      producer,
+      transport,
+      routerRtpCapabilities: router.rtpCapabilities,
+      constrainedBaselineOnly
+    };
+  };
+
+  test('should consume a screen share the browser can decode', async () => {
+    const { runtime, caller, producer, transport, routerRtpCapabilities } =
+      await withH264HighScreenShare();
+
+    try {
+      const result = await caller.voice.consume({
+        kind: StreamKind.SCREEN,
+        remoteId: 1,
+        rtpCapabilities: routerRtpCapabilities,
+        paused: true
+      });
+
+      expect(result.producerId).toBe(producer.id);
+      expect(result.consumerRtpParameters.codecs[0]!.parameters).toMatchObject({
+        'profile-level-id': '640032'
+      });
+      expect(runtime.getConsumer(2, 1, StreamKind.SCREEN)?.id).toBe(
+        result.consumerId
+      );
+    } finally {
+      transport.close();
+      await runtime.destroy();
+    }
+  });
+
+  test('should refuse a screen share in a codec the browser cannot decode', async () => {
+    const { runtime, caller, transport, constrainedBaselineOnly } =
+      await withH264HighScreenShare();
+
+    try {
+      await expect(
+        caller.voice.consume({
+          kind: StreamKind.SCREEN,
+          remoteId: 1,
+          rtpCapabilities: constrainedBaselineOnly
+        })
+      ).rejects.toMatchObject({
+        code: 'PRECONDITION_FAILED',
+        message: "Your browser can't play the video codec this stream uses."
+      });
+    } finally {
+      transport.close();
       await runtime.destroy();
     }
   });
