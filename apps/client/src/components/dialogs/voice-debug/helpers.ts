@@ -119,6 +119,27 @@ const formatTime = (at: number) => {
   return `${date.toLocaleTimeString()}.${String(date.getMilliseconds()).padStart(3, '0')}`;
 };
 
+const buildVoiceDebugFilename = (capturedAt?: number): string => {
+  const validAt =
+    typeof capturedAt === 'number' && Number.isFinite(capturedAt)
+      ? capturedAt
+      : Date.now();
+  const date = new Date(validAt);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const datePart = [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join('-');
+  const timePart = [
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds())
+  ].join('-');
+
+  return `sharkord-voice-diagnostics-${datePart}_${timePart}.json`;
+};
+
 const CONNECTION_STATE_TONES: Record<string, TTone> = {
   connected: 'ok',
   completed: 'ok',
@@ -140,6 +161,7 @@ const getScalarEntries = (stat: TVoiceDebugStat) =>
   );
 
 export {
+  buildVoiceDebugFilename,
   computeRates,
   describeCandidate,
   findStatById,

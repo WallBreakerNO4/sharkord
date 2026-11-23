@@ -11,15 +11,20 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger
 } from '@sharkord/ui';
+import { ChevronDown, Copy, Download } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { TDialogBaseProps } from '../types';
-import { computeRates, formatTime } from './helpers';
+import { buildVoiceDebugFilename, computeRates, formatTime } from './helpers';
 import { OverviewTab } from './overview-tab';
 import {
   ConsumersTab,
@@ -91,6 +96,35 @@ const VoiceDebugDialog = memo(({ isOpen, close }: TDialogBaseProps) => {
     }
   }, [json]);
 
+  const handleDownload = useCallback(() => {
+    try {
+      // built on demand: the pretty json is recomputed every second, the
+      // download needs exactly one compact copy per click
+      const compactJson = JSON.stringify({ snapshot, events });
+      const blob = new Blob([compactJson], {
+        type: 'application/json;charset=utf-8'
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = buildVoiceDebugFilename(snapshot?.capturedAt);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // firefox and safari keep reading the blob after click returns, and the
+      // electron save-as dialog holds the url while the user picks a path, so
+      // an early revoke fails the download or truncates it to zero bytes
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
+      toast.success('Voice debug report downloaded');
+    } catch (error) {
+      toast.error(`Could not download the report: ${String(error)}`);
+    }
+  }, [snapshot, events]);
+
   const handleTogglePause = useCallback(() => {
     setPaused((current) => !current);
   }, []);
@@ -117,9 +151,24 @@ const VoiceDebugDialog = memo(({ isOpen, close }: TDialogBaseProps) => {
               <Button size="sm" variant="outline" onClick={handleClearEvents}>
                 Clear events
               </Button>
-              <Button size="sm" onClick={handleCopy}>
-                Copy report
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm">
+                    Report
+                    <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleCopy}>
+                    <Copy />
+                    Copy
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDownload}>
+                    <Download />
+                    Download
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </span>
           </DialogTitle>
         </DialogHeader>
